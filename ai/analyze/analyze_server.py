@@ -152,7 +152,7 @@ def analyze():
         if isinstance(df["Close"], pd.DataFrame):
             df["Close"] = df["Close"].iloc[:, 0]
 
-        if len(df) < 60:
+        if len(df) < 5:
             return jsonify({"error": "not enough data"}), 400
 
         score, rsi14, ema_flag = composite_score(df)

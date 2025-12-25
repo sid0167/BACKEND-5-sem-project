@@ -23,9 +23,10 @@ const app = express();
 app.use(
   cors({
     origin: [
-      "http://localhost:3000",
-      "http://192.168.29.123:3000",
-    ],
+  "http://localhost:3000",
+  "http://frontend:3000"
+],
+
     credentials: true,
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -39,13 +40,15 @@ app.use(express.json());
 // Env vars
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI =
-  process.env.MONGODB_URI || "mongodb://localhost:27017/stock-ai";
+  process.env.MONGODB_URI || "mongodb://mongo:27017/stock-ai";
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 const EXCEL_PATH =
   process.env.EXCEL_PATH ||
   path.resolve(__dirname, "../data/sample_live_stock_data.xlsx");
 
-const AI_URL = process.env.AI_URL || "http://127.0.0.1:5001/predict";
+const AI_URL = process.env.AI_URL || "http://ai:5001/predict";
+const AI_YAHOO_BASE = process.env.AI_YAHOO_BASE || "http://ai:5002";
+
 
 // Connect DB
 mongoose
@@ -125,7 +128,7 @@ app.get("/recommend", async (req, res) => {
 });
 
 // ===== Yahoo AI proxy =====
-const AI_YAHOO_BASE = "http://localhost:5002";   // FINAL FIX
+  // FINAL FIX
 
 
 // Analyze stock
@@ -235,12 +238,9 @@ app.post("/portfolio/order", authenticate, async (req, res) => {
 });
 
 // Get portfolio
-app.get("/portfolio/:userId", authenticate, async (req, res) => {
-  if (req.userId !== req.params.userId)
-    return res.status(403).json({ error: "Unauthorized" });
-
+app.get("/portfolio", authenticate, async (req, res) => {
   try {
-    const orders = await Portfolio.find({ userId: req.params.userId }).sort({
+    const orders = await Portfolio.find({ userId: req.userId }).sort({
       createdAt: -1,
     });
     res.json(orders);
@@ -248,6 +248,7 @@ app.get("/portfolio/:userId", authenticate, async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
 
 // Delete order
 app.delete("/portfolio/:orderId", authenticate, async (req, res) => {
@@ -266,6 +267,6 @@ app.delete("/portfolio/:orderId", authenticate, async (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Backend running at http://localhost:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Backend running on port ${PORT}`);
 });

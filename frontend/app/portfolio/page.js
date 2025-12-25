@@ -1,4 +1,5 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import axios from "axios";
 import Link from "next/link";
@@ -13,23 +14,23 @@ export default function PortfolioPage() {
     try {
       const u = JSON.parse(localStorage.getItem("user") || "null");
       setUser(u);
-    } catch (e) {
+    } catch {
       setUser(null);
     }
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-    fetchOrders();
+    if (user) fetchOrders();
   }, [user]);
 
   const fetchOrders = async () => {
     const token = localStorage.getItem("token");
-    if (!token) return;
+    if (!token || !user) return;
+
     setLoading(true);
     setError("");
     try {
-      const res = await axios.get(`http://localhost:5000/portfolio/${user.id}`, {
+      const res = await axios.get("/api/portfolio", {
         headers: { Authorization: `Bearer ${token}` },
       });
       setOrders(res.data || []);
@@ -45,110 +46,84 @@ export default function PortfolioPage() {
     if (!confirm("Delete this order?")) return;
     const token = localStorage.getItem("token");
     try {
-      await axios.delete(`http://localhost:5000/portfolio/${id}`, {
+      await axios.delete(`/api/portfolio/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      // refresh
       fetchOrders();
     } catch (err) {
       alert(err.response?.data?.error || err.message || "Failed to delete");
     }
   };
 
-  // Aggregate holdings by symbol (buys +, sells -)
+  // Aggregate holdings
   const holdings = orders.reduce((acc, o) => {
-    const sym = o.symbol;
     const sign = o.side === "buy" ? 1 : -1;
-    if (!acc[sym]) acc[sym] = { symbol: sym, qty: 0, avgPriceSum: 0, trades: 0 };
-    acc[sym].qty += sign * o.qty;
-    acc[sym].avgPriceSum += sign * o.price * o.qty;
-    acc[sym].trades += 1;
+    acc[o.symbol] ??= { symbol: o.symbol, qty: 0, sum: 0 };
+    acc[o.symbol].qty += sign * o.qty;
+    acc[o.symbol].sum += sign * o.qty * o.price;
     return acc;
   }, {});
 
-  const holdingsList = Object.values(holdings).map((h) => {
-    const avgPrice = h.qty !== 0 ? Math.abs(h.avgPriceSum / (h.qty || 1)) : Math.abs(h.avgPriceSum / h.trades || 0);
-    return { symbol: h.symbol, qty: h.qty, avgPrice: Number(avgPrice.toFixed(2)) };
-  });
+  const holdingsList = Object.values(holdings).map((h) => ({
+    symbol: h.symbol,
+    qty: h.qty,
+    avgPrice: h.qty ? Math.abs(h.sum / h.qty).toFixed(2) : 0,
+  }));
 
   return (
     <main style={{ minHeight: "70vh", padding: 24 }}>
-      <div style={{ maxWidth: 1000, margin: "0 auto", display: "flex", gap: 20 }}>
-        <section style={{ flex: 1 }}>
-          <h1 style={{ color: "#66fcf1" }}>My Portfolio</h1>
+      <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+        <h1 style={{ color: "#66fcf1" }}>My Portfolio</h1>
 
-          {!user && (
-            <div style={{ background: "#0f1a1b", padding: 16, borderRadius: 8 }}>
-              <p style={{ color: "#cfeeee" }}>You are not logged in.</p>
-              <Link href="/login"><button style={{ marginTop: 8, padding: 8, borderRadius: 6, background: "#45a29e", border: "none", color: "#071014" }}>Login</button></Link>
-            </div>
-          )}
+        {!user && (
+          <div style={{ background: "#0f1a1b", padding: 16, borderRadius: 8 }}>
+            <p style={{ color: "#cfeeee" }}>You are not logged in.</p>
+            <Link href="/login">
+              <button style={{ padding: 8, background: "#45a29e", border: "none" }}>
+                Login
+              </button>
+            </Link>
+          </div>
+        )}
 
-          {user && (
-            <>
-              <div style={{ marginTop: 12, display: 'flex', gap: 12 }}>
-                <div style={{ background: '#0f1a1b', padding: 12, borderRadius: 8, flex: 1 }}>
-                  <h3 style={{ color: '#66fcf1' }}>Holdings</h3>
-                  {holdingsList.length === 0 ? (
-                    <div style={{ color: '#9dbdbb' }}>No holdings</div>
-                  ) : (
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead style={{ color: '#66fcf1', textAlign: 'left' }}>
-                        <tr><th>Symbol</th><th>Qty</th><th>Avg Price</th></tr>
-                      </thead>
-                      <tbody>
-                        {holdingsList.map((h) => (
-                          <tr key={h.symbol} style={{ borderTop: '1px solid #172a2b' }}>
-                            <td style={{ padding: 8 }}>{h.symbol}</td>
-                            <td style={{ padding: 8 }}>{h.qty}</td>
-                            <td style={{ padding: 8 }}>{h.avgPrice}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
+        {user && (
+          <>
+            <h3 style={{ color: "#66fcf1", marginTop: 20 }}>Holdings</h3>
+            {holdingsList.length === 0 ? (
+              <p style={{ color: "#9dbdbb" }}>No holdings</p>
+            ) : (
+              <table style={{ width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th>Qty</th>
+                    <th>Avg Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {holdingsList.map((h) => (
+                    <tr key={h.symbol}>
+                      <td>{h.symbol}</td>
+                      <td>{h.qty}</td>
+                      <td>{h.avgPrice}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
 
-                <div style={{ width: 360, background: '#0f1a1b', padding: 12, borderRadius: 8 }}>
-                  <h3 style={{ color: '#66fcf1' }}>Account</h3>
-                  <div style={{ color: '#cfeeee' }}><b>{user.name}</b></div>
-                  <div style={{ color: '#9dbdbb', fontSize: 13 }}>{user.email}</div>
-                </div>
+            <h3 style={{ color: "#66fcf1", marginTop: 20 }}>Orders</h3>
+            {loading && <p>Loading...</p>}
+            {error && <p style={{ color: "red" }}>{error}</p>}
+
+            {orders.map((o) => (
+              <div key={o._id} style={{ marginTop: 10 }}>
+                {o.symbol} | {o.side} | {o.qty} @ {o.price}
+                <button onClick={() => deleteOrder(o._id)}>Delete</button>
               </div>
-
-              <div style={{ marginTop: 16, background: '#0f1a1b', padding: 12, borderRadius: 8 }}>
-                <h3 style={{ color: '#66fcf1' }}>Orders</h3>
-                {loading && <div style={{ color: '#9dbdbb' }}>Loading...</div>}
-                {error && <div style={{ color: '#ff6b6b' }}>{error}</div>}
-
-                {orders.length === 0 && !loading ? (
-                  <div style={{ color: '#9dbdbb' }}>No orders placed yet.</div>
-                ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8 }}>
-                    <thead style={{ color: '#66fcf1', textAlign: 'left' }}>
-                      <tr><th>When</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Price</th><th></th></tr>
-                    </thead>
-                    <tbody>
-                      {orders.map((o) => (
-                        <tr key={o._id} style={{ borderTop: '1px solid #172a2b' }}>
-                          <td style={{ padding: 8 }}>{new Date(o.createdAt).toLocaleString()}</td>
-                          <td style={{ padding: 8 }}>{o.symbol}</td>
-                          <td style={{ padding: 8 }}>{o.side}</td>
-                          <td style={{ padding: 8 }}>{o.qty}</td>
-                          <td style={{ padding: 8 }}>{o.price}</td>
-                          <td style={{ padding: 8 }}>
-                            <button onClick={() => deleteOrder(o._id)} style={{ padding: '6px 8px', borderRadius: 6, background: '#ff6b6b', color: '#071014', border: 'none' }}>Delete</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </>
-          )}
-        </section>
-
+            ))}
+          </>
+        )}
       </div>
     </main>
   );

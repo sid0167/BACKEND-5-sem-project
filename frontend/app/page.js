@@ -28,61 +28,102 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const res = await axios.get("http://localhost:5000/recommend");
-        setStocks(res.data || []);
-      } catch (err) {
-        console.error(err);
-        // fallback mock
-        setStocks((prev) => prev.length ? prev : [{ symbol: 'INFY', lastPrice: 1500, changePercent: '+0.5', predictedNext: 1505, recommendation: 'Buy' }]);
-      }
-    };
+  const fetchData = async () => {
+    try {
+      const res = await axios.get("/api/recommend");
+      console.log("AI DATA SAMPLE:", res.data[0]);
 
-    fetchData();
-    const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
-  }, []);
+      const formatted = res.data
+        .map((row) => ({
+          symbol: row.symbol,
+          lastPrice: row.lastPrice,
+          changePercent: row.changePercent,
+          predictedNext: row.predictedNext,
+          recommendation: row.recommendation,
+        }))
+        .filter(s => s.symbol);
+
+      setStocks(formatted);
+    } catch (err) {
+      console.error("Failed to fetch recommendations:", err);
+    }
+  };
+
+  fetchData();
+  const interval = setInterval(fetchData, 10000);
+  return () => clearInterval(interval);
+}, []);
+
 
   // Fetch orders from backend if user is logged in
-  useEffect(() => {
-    if (!user) {
+ useEffect(() => {
+  if (!user) {
+    setOrders([]);
+    return;
+  }
+
+  const fetchOrders = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      const res = await axios.get(
+        "/api/portfolio",   // ✅ FIX 1
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      setOrders(res.data || []);
+    } catch (err) {
+      console.error("Failed to fetch orders:", err);
       setOrders([]);
-      return;
     }
+  };
 
-    const fetchOrders = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
+  fetchOrders();
+}, [user]);
 
-        const res = await axios.get(`http://localhost:5000/portfolio/${user.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setOrders(res.data || []);
-      } catch (err) {
-        console.error('Failed to fetch orders:', err);
-        setOrders([]);
-      }
-    };
-
-    fetchOrders();
-  }, [user]);
 
   const filteredStocks = stocks.filter((s) => s.symbol.toLowerCase().includes(query.toLowerCase()));
 
-  const openChart = async (stock) => {
-    try {
-      const ySymbol = stock.symbol.endsWith('.NS') ? stock.symbol : `${stock.symbol}.NS`;
-    const { data } = await axios.get(`http://localhost:5000/analyze/${ySymbol}`);
-
-
-      setSelectedStock({ ...stock, ...data });
-    } catch (e) {
-      // fallback
-      setSelectedStock({ ...stock, trend: 'Unknown', score: 0, indicators: {}, sparkline: [] });
+ const openChart = async (stock) => {
+  try {
+    // 🔥 HARD GUARD (MOST IMPORTANT)
+    if (!stock || !stock.symbol || typeof stock.symbol !== "string") {
+      alert("Invalid stock symbol");
+      return;
     }
-  };
+
+    const cleanSymbol = stock.symbol.trim();
+    if (cleanSymbol.length === 0) {
+      alert("Invalid stock symbol");
+      return;
+    }
+
+    const ySymbol = cleanSymbol.endsWith(".NS")
+      ? cleanSymbol
+      : `${cleanSymbol}.NS`;
+
+    const { data } = await axios.get(`/api/analyze/${ySymbol}`);
+
+    setSelectedStock({ ...stock, ...data });
+  } catch (e) {
+    console.error("Analyze failed:", e);
+
+    // fallback only when request fails (not when symbol is bad)
+    setSelectedStock({
+      ...stock,
+      trend: "Unknown",
+      score: 0,
+      indicators: {},
+      sparkline: [],
+    });
+  }
+};
+
 
   const closeChart = () => setSelectedStock(null);
 
@@ -103,10 +144,10 @@ export default function Page() {
       }
 
       const res = await axios.post(
-        'http://localhost:5000/portfolio/order',
-        { symbol: order.symbol, side: order.side, qty: order.qty, price: order.price },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+  "/api/portfolio/order",
+  { symbol: order.symbol, side: order.side, qty: order.qty, price: order.price },
+  { headers: { Authorization: `Bearer ${token}` } }
+);
 
       setOrders([res.data, ...orders]);
       alert(`${order.side.toUpperCase()} order placed: ${order.qty} ${order.symbol} @ ${order.price}`);
